@@ -1,0 +1,16 @@
+[
+    {
+        "author":  "YeaniFlix",
+        "description":  "Anime en español Latino vía AnimeOnline.Ninja",
+        "icon":  "https://ww3.animeonline.ninja/favicon.ico",
+        "lang":  "es",
+        "license":  "MIT",
+        "name":  "Anime Ninja",
+        "nsfw":  "false",
+        "package":  "animeninja",
+        "type":  "bangumi",
+        "url":  "https://raw.githubusercontent.com/yeflixlite/Anime/main/extensions/animeninja.js",
+        "version":  "v0.1.0",
+        "webSite":  "https://ww3.animeonline.ninja"
+    }
+]
