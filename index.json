@@ -1,16 +1,16 @@
 [
     {
         "author":  "YeaniFlix",
-        "description":  "Anime en español Latino vía AnimeOnline.Ninja",
-        "icon":  "https://ww3.animeonline.ninja/favicon.ico",
+        "description":  "Anime en espa\u00f1ol (Latino/Castellano) v\u00eda Latanime",
+        "icon":  "https://latanime.org/favicon.ico",
         "lang":  "es",
         "license":  "MIT",
-        "name":  "Anime Ninja",
+        "name":  "Latanime",
         "nsfw":  "false",
-        "package":  "animeninja",
+        "package":  "latanime",
         "type":  "bangumi",
-        "url":  "https://raw.githubusercontent.com/yeflixlite/Anime/main/extensions/animeninja.js",
-        "version":  "v0.3.0",
-        "webSite":  "https://ww3.animeonline.ninja"
+        "url":  "https://raw.githubusercontent.com/yeflixlite/Anime/main/extensions/latanime.js",
+        "version":  "v0.1.0",
+        "webSite":  "https://latanime.org"
     }
 ]
