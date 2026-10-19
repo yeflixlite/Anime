@@ -1,6 +1,6 @@
 // ==MiruExtension==
 // @name         Anime Ninja
-// @version      v0.1.0
+// @version      v0.2.0
 // @author       YeaniFlix
 // @lang         es
 // @license      MIT
@@ -155,12 +155,13 @@ export default class extends Extension {
       }
 
       const host = (url.match(/^https?:\/\/[^\/]+/) || [SITE])[0];
+      const cfg = this.dtConfig(res, host);
 
       // 1) Servidores declarados por Dooplay (wp-json / admin-ajax)
       const opts = await this.playerOptions(res);
       let fallback = null;
       for (const opt of opts) {
-        const embed = await this.fetchEmbed(host, url, opt);
+        const embed = await this.fetchEmbed(host, url, opt, cfg);
         if (!embed) continue;
         const s = await this.resolveStream(embed, url);
         if (!s) continue;
@@ -187,36 +188,47 @@ export default class extends Extension {
   }
 
   // Resuelve el embed de un servidor: API JSON de Dooplay y, si falla,
-  // el clasico admin-ajax (action=doo_player_ajax).
-  async fetchEmbed(host, referer, opt) {
-    const api =
-      host + "/wp-json/dooplayer/v1/post/" + opt.post +
-      "?type=" + encodeURIComponent(opt.type) +
-      "&source=" + encodeURIComponent(opt.nume);
-    try {
-      const data = await this.request("", { headers: { "Miru-Url": api, "Referer": referer } });
-      const embed = this.pickEmbed(data);
-      if (embed) return embed;
-    } catch (_) {}
+  // el clasico admin-ajax (action=doo_player_ajax). Usa el url_api/url reales
+  // del objeto dtAjax de la pagina (que puede apuntar a otro host, p.ej. www1).
+  async fetchEmbed(host, referer, opt, cfg) {
+    cfg = cfg || {};
+    const apiBase = cfg.api || host + "/wp-json/dooplayer/v1/post/";
+    const ajaxUrl = cfg.ajax || host + "/wp-admin/admin-ajax.php";
 
-    try {
-      const body =
-        "action=doo_player_ajax&post=" + encodeURIComponent(opt.post) +
-        "&nume=" + encodeURIComponent(opt.nume) +
-        "&type=" + encodeURIComponent(opt.type);
-      const data = await this.request("", {
-        method: "post",
-        headers: {
-          "Miru-Url": host + "/wp-admin/admin-ajax.php",
-          "Referer": referer,
-          "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-        },
-        data: body,
-      });
-      return this.pickEmbed(data);
-    } catch (_) {}
+    const tryJson = async () => {
+      try {
+        const api =
+          apiBase + opt.post +
+          "?type=" + encodeURIComponent(opt.type) +
+          "&source=" + encodeURIComponent(opt.nume);
+        const data = await this.request("", { headers: { "Miru-Url": api, "Referer": referer } });
+        return this.pickEmbed(data);
+      } catch (_) { return ""; }
+    };
 
-    return "";
+    const tryAjax = async () => {
+      try {
+        const body =
+          "action=doo_player_ajax&post=" + encodeURIComponent(opt.post) +
+          "&nume=" + encodeURIComponent(opt.nume) +
+          "&type=" + encodeURIComponent(opt.type);
+        const data = await this.request("", {
+          method: "post",
+          headers: {
+            "Miru-Url": ajaxUrl,
+            "Referer": referer,
+            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+          },
+          data: body,
+        });
+        return this.pickEmbed(data);
+      } catch (_) { return ""; }
+    };
+
+    if ((cfg.method || "").toLowerCase() === "admin-ajax") {
+      return (await tryAjax()) || (await tryJson());
+    }
+    return (await tryJson()) || (await tryAjax());
   }
 
   pickEmbed(data) {
@@ -252,9 +264,36 @@ export default class extends Extension {
       const type = (html.match(/data-type=["']([^"']+)["']/i) || [])[1];
       const tm = html.match(/<span[^>]*class=["'][^"']*\btitle\b[^"']*["'][^>]*>([\s\S]*?)<\/span>/i);
       const name = tm ? tm[1].replace(/<[^>]+>/g, "").trim() : "";
-      if (post && nume && type) out.push({ post: post, nume: nume, type: type, name: name });
+      const sm = html.match(/<span[^>]*class=["'][^"']*\bserver\b[^"']*["'][^>]*>([\s\S]*?)<\/span>/i);
+      const server = sm ? sm[1].replace(/<[^>]+>/g, "").trim() : "";
+      if (post && type) {
+        out.push({ post: post, nume: nume || "1", type: type, name: name, server: server });
+      }
     }
     return out;
+  }
+
+  // Lee el objeto dtAjax (url_api absoluto, admin-ajax y play_method).
+  dtConfig(html, host) {
+    const cfg = { api: "", ajax: "", method: "" };
+    if (!html || typeof html !== "string") return cfg;
+    const m = html.match(/dtAjax\s*=\s*\{([\s\S]*?)\}/i);
+    const block = m ? m[1] : html;
+    const api = (block.match(/url_api["']?\s*:\s*["']([^"']+)["']/i) || [])[1];
+    const ajax = (block.match(/["']url["']\s*:\s*["']([^"']+)["']/i) || [])[1];
+    const method = (block.match(/play_method["']?\s*:\s*["']([^"']+)["']/i) || [])[1];
+    if (api) cfg.api = this.abs(this.decodeUrl(api), host);
+    if (ajax) cfg.ajax = this.abs(this.decodeUrl(ajax), host);
+    if (method) cfg.method = method;
+    return cfg;
+  }
+
+  // Convierte una URL relativa/protocol-relative en absoluta.
+  abs(u, host) {
+    if (!u) return "";
+    if (/^https?:/i.test(u)) return u;
+    if (u.indexOf("//") === 0) return "https:" + u;
+    return host + (u.charAt(0) === "/" ? "" : "/") + u;
   }
 
   async resolveStream(embed, referer) {
