@@ -1,13 +1,13 @@
 // ==MiruExtension==
 // @name         Anime Ninja
-// @version      v0.2.0
+// @version      v0.3.0
 // @author       YeaniFlix
 // @lang         es
 // @license      MIT
 // @package      animeninja
 // @type         bangumi
-// @icon         https://ww3.animeonline.ninja/favicon.ico
-// @webSite      https://ww3.animeonline.ninja
+// @icon         https://ver.animeonline.ninja/favicon.ico
+// @webSite      https://ver.animeonline.ninja
 // @nsfw         false
 // ==/MiruExtension==
 
@@ -23,28 +23,48 @@
 //   /wp-json/dooplayer/v1/post/<POST>?type=<TYPE>&source=<NUME>
 // usando los data-post / data-nume / data-type de cada servidor.
 //
-// IMPORTANTE (Cloudflare): el sitio esta detras de un challenge interactivo.
-// Abrir la web una vez dentro del WebView de la app para obtener la cookie
-// cf_clearance; despues esta extension (que comparte el cookie jar) funciona.
+// IMPORTANTE (Cloudflare): el dominio actual es ver.animeonline.ninja y esta
+// detras de un challenge INTERACTIVO (Cf-Mitigated: challenge, "Just a moment").
+// Ninguna peticion normal puede pasar: hace falta la cookie cf_clearance que
+// solo se obtiene resolviendo el reto en un navegador real.
+//
+// Como pasar el reto en la app (una sola vez):
+//   1. La extension devuelve un item "PASO 1: verificar Cloudflare".
+//   2. Abre ese item -> pantalla de detalle (aunque salga el aviso).
+//   3. Toca el icono GLOBO (arriba a la derecha) -> se abre el WebView.
+//   4. Espera a que cargue del todo el sitio (se resuelve el reto).
+//   5. Vuelve atras: la app copia las cookies (cf_clearance) al jar.
+//   6. Refresca: ya cargara el contenido normalmente.
+// El UA del WebView y el de las peticiones es el mismo, asi que la cookie vale.
 
-const SITE = "https://ww3.animeonline.ninja";
+const SITE = "https://ver.animeonline.ninja";
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
 export default class extends Extension {
   async latest(page) {
-    const p = Math.max(1, parseInt(page) || 1);
-    const path = p === 1 ? "/genero/animeflix/" : "/genero/animeflix/page/" + p + "/";
-    const res = await this.request(path, { headers: { "Miru-Url": SITE } });
-    return this.parseList(res);
+    try {
+      const p = Math.max(1, parseInt(page) || 1);
+      const path = p === 1 ? "/genero/animeflix/" : "/genero/animeflix/page/" + p + "/";
+      const res = await this.request(path, { headers: this.reqHeaders(SITE) });
+      const list = await this.parseList(res);
+      return list.length ? list : this.bootstrapList();
+    } catch (_) {
+      return this.bootstrapList();
+    }
   }
 
   async search(kw, page) {
-    const q = encodeURIComponent(((kw || "") + "").trim());
-    const p = Math.max(1, parseInt(page) || 1);
-    const path = p === 1 ? "/?s=" + q : "/?s=" + q + "&paged=" + p;
-    const res = await this.request(path, { headers: { "Miru-Url": SITE } });
-    return this.parseList(res);
+    try {
+      const q = encodeURIComponent(((kw || "") + "").trim());
+      const p = Math.max(1, parseInt(page) || 1);
+      const path = p === 1 ? "/?s=" + q : "/?s=" + q + "&paged=" + p;
+      const res = await this.request(path, { headers: this.reqHeaders(SITE) });
+      const list = await this.parseList(res);
+      return list.length ? list : this.bootstrapList();
+    } catch (_) {
+      return this.bootstrapList();
+    }
   }
 
   async createFilter() {
@@ -86,11 +106,58 @@ export default class extends Extension {
     return out;
   }
 
+  // ------------------------------------------------------------------ helpers
+  // Cabeceras de navegador (el motor añade UA y cookies del jar automaticamente).
+  reqHeaders(ref) {
+    return {
+      "Miru-Url": ref,
+      "Referer": ref,
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
+    };
+  }
+
+  // Normaliza cualquier url a absoluta del sitio.
+  norm(url) {
+    if (!url) return SITE + "/";
+    if (/^https?:/i.test(url)) return url;
+    if (url.indexOf("//") === 0) return "https:" + url;
+    return SITE + (url.charAt(0) === "/" ? "" : "/") + url;
+  }
+
+  // Un solo item para abrir el sitio en el WebView (icono globo) y pasar Cloudflare.
+  bootstrapList() {
+    return [{
+      title: "PASO 1: verificar Cloudflare (toca aqui)",
+      url: "/",
+      cover: "",
+      update: "Luego toca el icono GLOBO arriba, espera y vuelve",
+    }];
+  }
+
+  blockedDetail(url) {
+    return {
+      title: "Anime Ninja",
+      cover: "",
+      desc:
+        "El sitio bloqueo la peticion (Cloudflare: 403 'Just a moment'). " +
+        "Solucion: toca el icono GLOBO (arriba a la derecha), espera a que " +
+        "cargue del todo la pagina del sitio y vuelve. Despues cargara normal.",
+      episodes: [{ title: "Ver", urls: [{ name: "Reproducir", url: this.norm(url) }] }],
+    };
+  }
+
   // ------------------------------------------------------------------ detalle
   async detail(url) {
-    const res = await this.request("", { headers: { "Miru-Url": url } });
-    if (!res || typeof res !== "string") {
-      return { title: "", cover: "", desc: "", episodes: [] };
+    const full = this.norm(url);
+    let res = "";
+    try {
+      res = await this.request("", { headers: this.reqHeaders(full) });
+    } catch (_) {
+      res = "";
+    }
+    if (!res || typeof res !== "string" || res.length < 200) {
+      return this.blockedDetail(url);
     }
 
     // Titulo: en Dooplay el <h1> real no lleva clase (los "Ver Anime" llevan class).
@@ -138,7 +205,7 @@ export default class extends Extension {
       groups.push({ title: "Episodios", urls: episodes });
     } else {
       // Pelicula / item de un solo reproductor: watch() resuelve los servidores.
-      groups.push({ title: "Ver", urls: [{ name: "Reproducir", url: url }] });
+      groups.push({ title: "Ver", urls: [{ name: "Reproducir", url: full }] });
     }
 
     return { title: (title || "").trim(), cover: cover || "", desc: desc, episodes: groups };
