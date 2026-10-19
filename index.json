@@ -10,7 +10,7 @@
         "package":  "latanime",
         "type":  "bangumi",
         "url":  "https://raw.githubusercontent.com/yeflixlite/Anime/main/extensions/latanime.js",
-        "version":  "v0.1.1",
+        "version":  "v0.1.2",
         "webSite":  "https://latanime.org"
     }
 ]
