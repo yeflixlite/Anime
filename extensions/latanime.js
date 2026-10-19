@@ -1,6 +1,6 @@
 // ==MiruExtension==
 // @name         Latanime
-// @version      v0.1.0
+// @version      v0.1.1
 // @author       YeaniFlix
 // @lang         es
 // @license      MIT
@@ -141,25 +141,74 @@ export default class extends Extension {
   // ------------------------------------------------------------------ watch
   async watch(url) {
     const full = this.norm(url);
+
+    // La app llama watch(embedUrl) al cambiar/failover de servidor.
+    if (this.isEmbed(full)) {
+      if (/\/reproductor/i.test(full)) {
+        const m = full.match(/[?&]url=([^&]+)/i);
+        if (m) return (await this.resolveEmbed(decodeURIComponent(m[1]), full)) || this.err("Servidor no resoluble");
+      }
+      return (await this.resolveEmbed(full, full)) || this.err("Servidor no resoluble");
+    }
+
     let res = "";
     try {
       res = await this.request("", { headers: this.reqHeaders(full) });
     } catch (_) {
       res = "";
     }
-    if (!res || typeof res !== "string") return { type: "hls", url: "" };
+    if (!res || typeof res !== "string") return this.err("No se pudo cargar el episodio");
 
     const servers = this.servers(res);
-    for (const s of servers) {
-      const r = await this.resolveEmbed(s.url, full);
-      if (r && r.url) return r;
+    if (!servers.length) {
+      const inline = this.findStream(res, full);
+      return inline || this.err("No se encontraron servidores");
     }
 
-    // Ultimo recurso: m3u8/mp4 suelto en el HTML del episodio
-    const inline = this.findStream(res, full);
-    if (inline) return inline;
+    // Mapa para el selector de servidores y el failover automatico de la app.
+    const map = {};
+    const refs = {};
+    for (const s of servers) {
+      map[s.name] = s.url;
+      refs[s.name] = full;
+    }
+    const extra = {
+      "X-Servers": JSON.stringify(map),
+      "X-Server-Referers": JSON.stringify(refs),
+    };
 
-    return { type: "hls", url: "" };
+    // Primario: probar primero los hosts mas fiables (mp4upload, mixdrop, ...).
+    const ordered = servers.slice().sort((a, b) => this.rankHost(a.url) - this.rankHost(b.url));
+    for (const s of ordered) {
+      const r = await this.resolveEmbed(s.url, full);
+      if (r && r.url) {
+        r.headers = Object.assign({}, r.headers, extra, { "X-Primary-Server": s.name });
+        return r;
+      }
+    }
+
+    return { type: "hls", url: "error://Ningun servidor resoluble", headers: extra };
+  }
+
+  err(msg) {
+    return { type: "hls", url: "error://" + msg };
+  }
+
+  // Una URL "embed" (de terceros) frente a una pagina /ver del sitio.
+  isEmbed(u) {
+    const m = u.match(/^https?:\/\/([^\/]+)/i);
+    const host = m ? m[1].toLowerCase() : "";
+    if (host.indexOf("latanime.org") !== -1) return /\/reproductor/i.test(u);
+    return true;
+  }
+
+  // Prioridad de servidores: los que sabemos resolver/reproducir primero.
+  rankHost(u) {
+    const h = (u.match(/^https?:\/\/([^\/]+)/i) || ["", ""])[1].toLowerCase();
+    if (h.indexOf("mp4upload") !== -1) return 0;
+    if (h.indexOf("mixdrop") !== -1 || h.indexOf("mxdrop") !== -1) return 1;
+    if (h.indexOf("dood") !== -1 || h.indexOf("playmogo") !== -1 || h.indexOf("ds2") !== -1) return 2;
+    return 3;
   }
 
   // Lista de servidores desde los botones data-player (base64).
