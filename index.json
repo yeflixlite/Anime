@@ -12,5 +12,19 @@
         "url":  "https://raw.githubusercontent.com/yeflixlite/Anime/main/extensions/latanime.js",
         "version":  "v0.1.4",
         "webSite":  "https://latanime.org"
+    },
+    {
+        "author":  "YeaniFlix",
+        "description":  "Pel\u00edculas y series en espa\u00f1ol v\u00eda PelisJuanita",
+        "icon":  "https://pelisjuanita.com/favicon.ico",
+        "lang":  "es",
+        "license":  "MIT",
+        "name":  "PelisJuanita",
+        "nsfw":  "false",
+        "package":  "pelisjuanita",
+        "type":  "bangumi",
+        "url":  "https://raw.githubusercontent.com/yeflixlite/Anime/main/extensions/pelisjuanita.js",
+        "version":  "v0.1.0",
+        "webSite":  "https://pelisjuanita.com"
     }
 ]
