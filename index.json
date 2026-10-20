@@ -19,12 +19,12 @@
         "icon":  "https://pelisjuanita.com/favicon.ico",
         "lang":  "es",
         "license":  "MIT",
-        "name":  "PelisJuanita",
+        "name":  "Pelis",
         "nsfw":  "false",
         "package":  "pelisjuanita",
         "type":  "bangumi",
         "url":  "https://raw.githubusercontent.com/yeflixlite/Anime/main/extensions/pelisjuanita.js",
-        "version":  "v0.1.0",
+        "version":  "v0.1.1",
         "webSite":  "https://pelisjuanita.com"
     }
 ]
