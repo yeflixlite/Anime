@@ -1,6 +1,6 @@
 // ==MiruExtension==
 // @name         Pelis
-// @version      v0.1.1
+// @version      v0.1.2
 // @author       YeaniFlix
 // @lang         es
 // @license      MIT
@@ -30,7 +30,7 @@
 //
 // Los servidores vienen en <div class='row-download' data-tipo='stream'
 // data-url='<embed>'>. Se resuelven sin proxy: byse/filemoon (AES-256-GCM),
-// voe, mixdrop, streamwish (packer) y vimeus (packer).
+// voe, mixdrop, streamwish (CDN hls2/hls3), vidhide (packer) y vimeus.
 
 const SITE = "https://pelisjuanita.com";
 const MOVIES = SITE + "/movies/movies.php";
@@ -53,7 +53,14 @@ const VOE_MIRRORS = [
   "nicolehappyoutside.com",
   "rebeccapracticeloss.com",
 ];
-const SW_HOSTS = ["playnixes.com", "hglamioz.com", "medixiru.com", "streamwish.to"];
+const SW_HOSTS = [
+  "playnixes.com",
+  "hglamioz.com",
+  "medixiru.com",
+  "hglink.to",
+  "streamhg.com",
+  "streamwish.to",
+];
 
 export default class extends Extension {
   // ------------------------------------------------------------------ listas
@@ -231,7 +238,15 @@ export default class extends Extension {
       s.label = label;
       map[label] = s.url;
     }
+    let langLabel = lang ? this.langName(lang) : "";
+    if (!langLabel) {
+      const ls = {};
+      for (const s of list) if (s.lang) ls[(s.lang || "").toLowerCase()] = true;
+      const keys = Object.keys(ls);
+      if (keys.length === 1) langLabel = this.langName(keys[0]);
+    }
     const extra = { "X-Servers": JSON.stringify(map) };
+    if (langLabel) extra["X-Language"] = langLabel;
 
     const ordered = list.slice().sort((a, b) => this.rankHost(a.url) - this.rankHost(b.url));
     for (const s of ordered) {
@@ -278,7 +293,7 @@ export default class extends Extension {
       return { key: "filemoon", name: "Filemoon" };
     }
     if (VOE_RE.test(s)) return { key: "voe", name: "Voe" };
-    if (/streamwish|hglink|playnixes|hglamioz|medixiru|awish/i.test(s)) {
+    if (/streamwish|hglink|streamhg|playnixes|hglamioz|medixiru|awish/i.test(s)) {
       return { key: "streamwish", name: "StreamWish" };
     }
     if (/vidhide|earnvids|morencius|vhide|vid-hide/i.test(s)) {
@@ -521,7 +536,15 @@ export default class extends Extension {
     const h = (String(u || "").match(/^https?:\/\/([^\/]+)/i) || ["", ""])[1].toLowerCase();
     if (h.indexOf("byse") !== -1 || h.indexOf("filemoon") !== -1) return 0;
     if (h.indexOf("voe") !== -1) return 1;
-    if (h.indexOf("streamwish") !== -1 || h.indexOf("hglink") !== -1) return 2;
+    if (
+      h.indexOf("streamwish") !== -1 ||
+      h.indexOf("hglink") !== -1 ||
+      h.indexOf("streamhg") !== -1 ||
+      h.indexOf("playnixes") !== -1 ||
+      h.indexOf("hglamioz") !== -1 ||
+      h.indexOf("medixiru") !== -1
+    )
+      return 2;
     if (h.indexOf("vidhide") !== -1 || h.indexOf("earnvids") !== -1) return 3;
     return 9;
   }
@@ -544,8 +567,12 @@ export default class extends Extension {
       const r = await this.voe(src);
       if (r) return r;
     }
-    if (/streamwish|awish|wish/i.test(src)) {
+    if (/streamwish|hglink|streamhg|playnixes|hglamioz|medixiru|awish|wish/i.test(src)) {
       const r = await this.streamwish(src);
+      if (r) return r;
+    }
+    if (/vidhide|earnvids|morencius|vhide|vid-hide/i.test(src)) {
+      const r = await this.vidhide(src);
       if (r) return r;
     }
     if (/vimeus|vimeos/i.test(src)) {
@@ -579,37 +606,54 @@ export default class extends Extension {
     return this.findStream(html, src);
   }
 
-  // ---- StreamWish (packer con links.hls2/hls3) ---------------------------
+  // ---- StreamWish (packer links.hls2/hls3 + CDN real) --------------------
   async streamwish(embed) {
     const src = this.fix(embed);
-    let id = (src.split("?")[0].split("/").filter(Boolean).pop() || "").replace(
+    const clean = src.split("#")[0];
+    let id = (clean.split("?")[0].split("/").filter(Boolean).pop() || "").replace(
       /\.html?$/i,
       ""
     );
     if (!id) return null;
+    const search = (clean.match(/\?[^#]*/) || [""])[0];
+    const own = (this.originOf(src) || "").replace(/^https?:\/\//i, "").toLowerCase();
 
-    for (const h of SW_HOSTS) {
+    const hosts = [own].concat(SW_HOSTS);
+    const seen = {};
+    for (const h of hosts) {
+      if (!h || seen[h]) continue;
+      seen[h] = true;
       for (const path of ["/e/", "/v/"]) {
-        const page = "https://" + h + path + id;
+        const page = "https://" + h + path + id + search;
         let html = "";
         try {
           html = await this.request("", {
             headers: {
               "Miru-Url": page,
-              "Referer": src,
+              "Referer": "https://www.google.com/",
               "User-Agent": UA,
               "Accept": "text/html,application/xhtml+xml,*/*;q=0.8",
+              "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
             },
           });
         } catch (_) {
           html = "";
         }
-        if (typeof html !== "string" || html.indexOf("eval(function(p,a,c,k,e") === -1) {
-          continue;
+        if (typeof html !== "string" || html.length < 500) continue;
+        // Cascara "Page is loading": reintento con la cookie ya guardada.
+        if (html.indexOf("Page is loading") !== -1 || html.indexOf("Redirecting") !== -1) {
+          try {
+            html = await this.request("", {
+              headers: { "Miru-Url": page, "Referer": page, "User-Agent": UA },
+            });
+          } catch (_) {}
         }
-        const r = this.swHtml(html);
+        if (typeof html !== "string" || !html) continue;
+        if (html.indexOf("Just a moment") !== -1) continue;
+
+        const r = await this.swHtml(html, "https://" + h);
         if (r) return r;
-        const d = html.match(/["'](https?:[^"']+\.m3u8[^"']*)["']/i);
+        const d = html.match(/["']((?:https?:)?\/\/[^"']+\.m3u8[^"']*)["']/i);
         if (d) {
           return {
             type: "hls",
@@ -622,7 +666,7 @@ export default class extends Extension {
     return null;
   }
 
-  swHtml(html) {
+  swHtml(html, base) {
     const un = this.unpack(this.locate(html, "links"));
     if (!un) return null;
     const block = un.match(/links\s*=\s*\{([\s\S]*?)\}/);
@@ -632,15 +676,116 @@ export default class extends Extension {
     let m;
     while ((m = re.exec(block[1]))) links[m[1]] = m[2];
     for (const k of ["hls2", "hls3", "hls4"]) {
-      const u = links[k];
+      let u = this.fix(links[k] || "");
       if (!u) continue;
+      if (u.indexOf("/") === 0) u = (base || "") + u;
+      if (!/\.m3u8|master\.txt|playlist\.txt|\/hls\//i.test(u)) continue;
+      const ref = k === "hls4" ? (base || "") + "/" : "https://streamwish.to/";
       return {
         type: "hls",
-        url: this.fix(u),
-        headers: { Referer: "https://streamwish.to/", "User-Agent": UA },
+        url: u,
+        headers: { Referer: ref, "User-Agent": UA },
       };
     }
     return null;
+  }
+
+  // ---- VidHide / Earnvids (packer con file: *.m3u8) ---------------------
+  async vidhide(embed) {
+    const src = this.fix(embed);
+    const clean = src.split("#")[0];
+    const idm = clean.match(/\/(?:v|e|embed)\/([A-Za-z0-9]+)/i);
+    const id = idm
+      ? idm[1]
+      : (clean.split("?")[0].split("/").filter(Boolean).pop() || "");
+    if (!id) return null;
+    const search = (clean.match(/\?[^#]*/) || [""])[0];
+    const own = (this.originOf(src) || "").replace(/^https?:\/\//i, "").toLowerCase();
+
+    const hosts = [own].concat([
+      "morencius.com",
+      "minochinos.com",
+      "callistanise.com",
+      "vsharea.com",
+      "vidhide.com",
+    ]);
+    const seen = {};
+    for (const h of hosts) {
+      if (!h || seen[h]) continue;
+      seen[h] = true;
+      const page = "https://" + h + "/v/" + id + search;
+      let html = "";
+      try {
+        html = await this.request("", {
+          headers: {
+            "Miru-Url": page,
+            "Referer": "https://google.com/",
+            "User-Agent": UA,
+            "Accept": "text/html,application/xhtml+xml,*/*;q=0.8",
+            "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
+          },
+        });
+      } catch (_) {
+        html = "";
+      }
+      if (typeof html !== "string" || !html) continue;
+      if (
+        html.length < 2000 &&
+        (html.indexOf("Page is loading") !== -1 || html.indexOf("Redirecting") !== -1)
+      ) {
+        try {
+          html = await this.request("", {
+            headers: { "Miru-Url": page, "Referer": page, "User-Agent": UA },
+          });
+        } catch (_) {}
+      }
+      if (typeof html !== "string" || !html) continue;
+      if (html.indexOf("Just a moment") !== -1) continue;
+
+      const r = this.streamFromPage(html, "https://" + h);
+      if (r) return r;
+    }
+    return null;
+  }
+
+  streamFromPage(html, origin) {
+    const body = String(html || "");
+    const abs = (u) => {
+      let s = this.fix(u);
+      if (s.indexOf("/") === 0) s = origin + s;
+      return s;
+    };
+    const pick = (text) => {
+      const m =
+        text.match(
+          /file\s*:\s*["']([^"']*(?:\.m3u8|master\.txt|playlist\.txt|\/hls\/)[^"']*)["']/i
+        ) ||
+        text.match(
+          /["']((?:https?:)?\/\/[^"'<>\s]+(?:\.m3u8|master\.txt|playlist\.txt)[^"'<>\s]*)["']/i
+        ) ||
+        text.match(/["'](\/stream\/[^"']+\.m3u8[^"']*)["']/i);
+      return m ? abs(m[1]) : "";
+    };
+    let u = "";
+    if (body.indexOf("eval(function(p,a,c,k,e") !== -1) {
+      const un = this.unpack(body);
+      if (un) u = pick(un);
+    }
+    if (!u) u = pick(body);
+    let type = "hls";
+    if (!u) {
+      const m = body.match(/file\s*:\s*["']([^"']+\.mp4[^"']*)["']/i);
+      if (m) {
+        u = abs(m[1]);
+        type = "mp4";
+      }
+    }
+    if (!u) return null;
+    return {
+      type: type,
+      url: u,
+      headers: { Referer: origin + "/", "User-Agent": UA },
+    };
   }
 
   // ---- Vimeus -> Vimeos (packer) -----------------------------------------
