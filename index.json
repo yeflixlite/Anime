@@ -38,7 +38,7 @@
         "package": "pelispedia",
         "type": "bangumi",
         "url": "https://raw.githubusercontent.com/yeflixlite/Anime/main/extensions/pelispedia.js",
-        "version": "v0.1.0",
+        "version": "v0.1.1",
         "webSite": "https://pelispedia.mov"
     }
 ]
