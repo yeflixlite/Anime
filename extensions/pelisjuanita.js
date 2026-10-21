@@ -1,6 +1,6 @@
 // ==MiruExtension==
 // @name         Pelis
-// @version      v0.1.2
+// @version      v0.1.3
 // @author       YeaniFlix
 // @lang         es
 // @license      MIT
@@ -75,7 +75,7 @@ export default class extends Extension {
       const sr = await this.get(SERIES + "?ultimas-agregadas&page=" + p, SITE + "/series/");
       out = out.concat(this.cards(sr, "serie"));
     } catch (_) {}
-    return out;
+    return this.dedupe(out);
   }
 
   async search(kw, page) {
@@ -91,17 +91,31 @@ export default class extends Extension {
       const sr = await this.get(SERIES + "?s=" + q + "&page=" + p, SITE + "/series/");
       out = out.concat(this.cards(sr, "serie"));
     } catch (_) {}
-    return out;
+    return this.dedupe(out);
   }
 
   // ------------------------------------------------------------------ detalle
-  async detail(url) {
+  async detail(url, allowFallback) {
     const u = this.canonical(url);
 
     if (/movieInfo\.php/i.test(u)) {
       const html = await this.get(u, SITE + "/movies/", true);
       const info = this.info(html);
       const langs = this.langs(html);
+      const hasServers = this.rows(html).some((s) => this.hostInfo(s.url));
+      if (!hasServers && allowFallback !== false) {
+        const slug0 = this.param(u, "title") || "";
+        if (slug0) {
+          const alt = await this.detail(
+            SERIES_INFO + "?nombreSerie=" + encodeURIComponent(slug0),
+            false
+          );
+          if (alt && alt.episodes && alt.episodes.length) {
+            if (info.title) alt.title = info.title;
+            return alt;
+          }
+        }
+      }
       const groups = [];
       if (langs.length) {
         for (const lang of langs) {
@@ -115,7 +129,7 @@ export default class extends Extension {
             ],
           });
         }
-      } else {
+      } else if (hasServers) {
         groups.push({
           title: "Pelicula",
           urls: [{ name: "Ver pelicula", url: u }],
@@ -182,6 +196,17 @@ export default class extends Extension {
         });
       }
       if (eps.length) groups.push({ title: "Temporada " + s, urls: eps });
+    }
+
+    if (!groups.length && allowFallback !== false) {
+      const slug0 = this.param(u, "nombreSerie") || "";
+      if (slug0) {
+        const alt = await this.detail(
+          MOVIE_INFO + "?title=" + encodeURIComponent(slug0),
+          false
+        );
+        if (alt && alt.episodes && alt.episodes.length) return alt;
+      }
     }
 
     if (!groups.length) {
@@ -296,7 +321,7 @@ export default class extends Extension {
     if (/streamwish|hglink|streamhg|playnixes|hglamioz|medixiru|awish/i.test(s)) {
       return { key: "streamwish", name: "StreamWish" };
     }
-    if (/vidhide|earnvids|morencius|vhide|vid-hide/i.test(s)) {
+    if (/vidhide|earnvids|morencius|callistanise|minochinos|vsharea|vhide|vid-hide/i.test(s)) {
       return { key: "vidhide", name: "VidHide" };
     }
     return null;
@@ -405,8 +430,12 @@ export default class extends Extension {
       const title = h2 ? this.clean(h2[1]) : "";
       if (!title) continue;
 
+      let type = kind;
+      if (/ver-serie\//i.test(href)) type = "serie";
+      else if (/\/pelicula\//i.test(href)) type = "movie";
+
       let slug = "";
-      if (kind === "movie") {
+      if (type === "movie") {
         slug = (href.match(/\/pelicula\/([^\/?#]+)/i) || [])[1] || "";
       } else {
         slug = (href.match(/ver-serie\/([^\/?#]+)/i) || [])[1] || "";
@@ -420,12 +449,40 @@ export default class extends Extension {
       out.push({
         title: title,
         url:
-          kind === "movie"
+          type === "movie"
             ? MOVIE_INFO + "?title=" + encodeURIComponent(slug)
             : SERIES_INFO + "?nombreSerie=" + encodeURIComponent(slug),
         cover: img ? this.fix(img[1]) : "",
         update: year ? this.clean(year[1]) : "",
       });
+    }
+    return out;
+  }
+
+  normTitle(s) {
+    return this.clean(s)
+      .toLowerCase()
+      .replace(/[áàäâã]/g, "a")
+      .replace(/[éèëê]/g, "e")
+      .replace(/[íìïî]/g, "i")
+      .replace(/[óòöôõ]/g, "o")
+      .replace(/[úùüû]/g, "u")
+      .replace(/ñ/g, "n")
+      .replace(/[^a-z0-9]+/g, "");
+  }
+
+  dedupe(list) {
+    const out = [];
+    const seen = {};
+    for (const it of list) {
+      const k = this.normTitle(it.title);
+      if (!k) {
+        out.push(it);
+        continue;
+      }
+      if (seen[k]) continue;
+      seen[k] = true;
+      out.push(it);
     }
     return out;
   }
@@ -545,7 +602,14 @@ export default class extends Extension {
       h.indexOf("medixiru") !== -1
     )
       return 2;
-    if (h.indexOf("vidhide") !== -1 || h.indexOf("earnvids") !== -1) return 3;
+    if (
+      h.indexOf("vidhide") !== -1 ||
+      h.indexOf("earnvids") !== -1 ||
+      h.indexOf("callistanise") !== -1 ||
+      h.indexOf("minochinos") !== -1 ||
+      h.indexOf("vsharea") !== -1
+    )
+      return 3;
     return 9;
   }
 
