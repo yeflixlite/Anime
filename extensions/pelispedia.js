@@ -1,6 +1,6 @@
 // ==MiruExtension==
 // @name         Pelis Premium
-// @version      v0.1.4
+// @version      v0.1.5
 // @author       YeaniFlix
 // @lang         es
 // @license      MIT
@@ -341,13 +341,14 @@ export default class extends Extension {
   async watch(u) {
     const raw = this.siteUrl(u);
     if (!raw) return this.err("URL vacia");
+    this._lastResolveError = "";
 
     if (this.hostInfo(raw) && !/pelispedia\./i.test(raw)) {
       const direct = await this.resolveEmbed(raw, SITE + "/");
       if (direct && direct.url && !String(direct.url).startsWith("error://")) {
         if (direct.verified || (await this.probeStream(direct))) return direct;
       }
-      return this.err("Servidor no resoluble");
+      return this.err(this._lastResolveError || "Servidor no resoluble");
     }
 
     let vid = raw;
@@ -388,6 +389,7 @@ export default class extends Extension {
     const headers = {};
     for (const s of list) headers[s.label] = s.url;
 
+    const failures = [];
     for (const s of list) {
       let r = null;
       try {
@@ -395,7 +397,12 @@ export default class extends Extension {
       } catch (_) {
         r = null;
       }
-      if (!r || !r.url || String(r.url).startsWith("error://")) continue;
+      if (!r || !r.url || String(r.url).startsWith("error://")) {
+        if (this._lastResolveError) {
+          failures.push(s.label + ": " + this._lastResolveError);
+        }
+        continue;
+      }
       if (r.verified || (await this.limit(this.probeStream(r), 9000, false))) {
         r.headers = Object.assign({}, r.headers || {}, {
           "X-Servers": JSON.stringify(headers),
@@ -404,11 +411,13 @@ export default class extends Extension {
         });
         return r;
       }
+      failures.push(s.label + ": el stream no respondió");
     }
 
+    const detail = failures.slice(0, 2).join(" | ");
     return {
       type: "hls",
-      url: "error://Ningun servidor responde",
+      url: "error://" + (detail ? "Ningun servidor responde. " + detail : "Ningun servidor responde"),
       headers: {
         "X-Servers": JSON.stringify(headers),
         "X-Language": this.e69LangName(g.lang),
@@ -535,6 +544,7 @@ export default class extends Extension {
   }
 
   async resolveEmbed(embed, referer) {
+    this._lastResolveError = "";
     const src = this.fix(embed);
     if (!src) return null;
     if (/\.m3u8(\?|#|$)/i.test(src)) {
@@ -637,10 +647,18 @@ export default class extends Extension {
       const wave2 = SW_HOSTS.map(norm).filter((h) => wave1.indexOf(h) === -1);
       got = await this.swFirst(wave2.map((h) => this.swHost(h, id, search)));
     }
-    if (!got) return null;
+    if (!got) {
+      if (!this._lastResolveError) {
+        this._lastResolveError = "StreamWish no devolvió la lista de reproducción.";
+      }
+      return null;
+    }
 
     const picked = await this.swPick(got.cands);
-    if (!picked) return null;
+    if (!picked) {
+      this._lastResolveError = "StreamWish devolvió un HLS que no responde.";
+      return null;
+    }
 
     this._sw[id] = {
       url: picked.url,
@@ -698,7 +716,15 @@ export default class extends Extension {
       return "";
     }
     if (typeof html !== "string" || html.length < 800) return "";
-    if (/Page is loading|Redirecting|Just a moment/i.test(html)) return "";
+    if (/no longer available|expired or has been deleted|file (?:was )?not found/i.test(html)) {
+      this._lastResolveError = "El enlace de StreamWish expiró o fue eliminado.";
+      return "";
+    }
+    if (/Page is loading|Redirecting|Just a moment/i.test(html)) {
+      this._lastResolveError =
+        "StreamWish está bloqueando la petición (Cloudflare o redirección).";
+      return "";
+    }
     return html;
   }
 
@@ -913,7 +939,13 @@ export default class extends Extension {
       list.push(h);
       if (list.length >= 4) break;
     }
-    return this.swFirst(list.map((h) => this.vidhideHost(h, id, search)));
+    const found = await this.swFirst(
+      list.map((h) => this.vidhideHost(h, id, search))
+    );
+    if (!found && !this._lastResolveError) {
+      this._lastResolveError = "VidHide no devolvió un stream reproducible.";
+    }
+    return found;
   }
 
   async vidhideHost(h, id, search) {
@@ -945,7 +977,14 @@ export default class extends Extension {
       );
     }
     if (typeof html !== "string" || !html) return null;
-    if (html.indexOf("Just a moment") !== -1) return null;
+    if (/no longer available|expired or has been deleted|file (?:was )?not found/i.test(html)) {
+      this._lastResolveError = "El enlace de VidHide expiró o fue eliminado.";
+      return null;
+    }
+    if (html.indexOf("Just a moment") !== -1) {
+      this._lastResolveError = "VidHide está bloqueando la petición (Cloudflare).";
+      return null;
+    }
     return this.streamFromPage(html, "https://" + h);
   }
 
@@ -1198,6 +1237,11 @@ export default class extends Extension {
           continue;
         }
         if (typeof res !== "string" || !res) continue;
+        if (/Confirm you(?:'|&#39;|’)?re human|altcha|verify you are human|cf-turnstile|hcaptcha/i.test(res)) {
+          this._lastResolveError =
+            "VOE requiere verificación humana (Altcha); no se puede resolver automáticamente.";
+          continue;
+        }
 
         const red = res.match(/window\.location\.href\s*=\s*['"](https?:\/\/[^'"]+)['"]/i);
         if (red && res.indexOf("application/json") === -1) {
@@ -1212,12 +1256,23 @@ export default class extends Extension {
           } catch (_) {}
         }
 
+        if (/Confirm you(?:'|&#39;|’)?re human|altcha|verify you are human|cf-turnstile|hcaptcha/i.test(res)) {
+          this._lastResolveError =
+            "VOE requiere verificación humana (Altcha); no se puede resolver automáticamente.";
+          continue;
+        }
+
         if (res.indexOf('<script type="application/json">["') !== -1 || /\.m3u8/i.test(res)) {
           html = res;
           break;
         }
       }
-      if (!html) return null;
+      if (!html) {
+        if (!this._lastResolveError) {
+          this._lastResolveError = "VOE no devolvió la configuración del video.";
+        }
+        return null;
+      }
 
       let url = "";
       const m = html.match(/<script type="application\/json">\["([^"]+)"\]<\/script>/);
@@ -1249,7 +1304,10 @@ export default class extends Extension {
         const d = html.match(/['"](https?:\/\/[^'"]+\.m3u8[^'"]*)['"]/i);
         if (d) url = d[1];
       }
-      if (!url) return null;
+      if (!url) {
+        this._lastResolveError = "VOE no expuso una URL de video válida.";
+        return null;
+      }
 
       url = this.fix(url);
       if (search && url.indexOf("t=") === -1) {

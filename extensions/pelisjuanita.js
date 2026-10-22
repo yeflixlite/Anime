@@ -1,6 +1,6 @@
 // ==MiruExtension==
 // @name         Pelis
-// @version      v0.1.7
+// @version      v0.1.8
 // @author       YeaniFlix
 // @lang         es
 // @license      MIT
@@ -247,13 +247,14 @@ export default class extends Extension {
   async watch(url) {
     const raw = this.fix(url);
     if (!raw) return this.err("URL vacia");
+    this._lastResolveError = "";
 
     // El reproductor pide cambiar de servidor: recibe directamente el embed.
     if (!/pelisjuanita\.com|movieInfo\.php|serieInfo\.php/i.test(raw)) {
       if (!this.hostInfo(raw)) return this.err("Servidor no soportado");
       const direct = await this.resolveEmbed(raw, SITE + "/");
       if (direct && direct.url) return direct;
-      return this.err("Servidor no resoluble");
+      return this.err(this._lastResolveError || "Servidor no resoluble");
     }
 
     const u = this.canonical(raw);
@@ -295,6 +296,7 @@ export default class extends Extension {
     if (langLabel) extra["X-Language"] = langLabel;
 
     let fallback = null;
+    const failures = [];
     for (const s of ordered) {
       let r = null;
       try {
@@ -302,7 +304,12 @@ export default class extends Extension {
       } catch (_) {
         r = null;
       }
-      if (!r || !r.url) continue;
+      if (!r || !r.url) {
+        if (this._lastResolveError) {
+          failures.push(s.label + ": " + this._lastResolveError);
+        }
+        continue;
+      }
       // El CDN de algunos mirrors responde 200 al resolver pero luego no
       // entrega el HLS. Comprobamos el stream antes de elegirlo como primario.
       const ok = await this.probeStream(r);
@@ -310,10 +317,15 @@ export default class extends Extension {
         "X-Primary-Server": s.label,
       });
       if (ok) return r;
+      failures.push(s.label + ": el stream no respondió");
       if (!fallback) fallback = r;
     }
     if (fallback) return fallback;
-    return Object.assign(this.err("Ningun servidor resoluble"), { headers: extra });
+    const detail = failures.slice(0, 2).join(" | ");
+    return Object.assign(
+      this.err(detail ? "Ningun servidor resoluble. " + detail : "Ningun servidor resoluble"),
+      { headers: extra }
+    );
   }
 
   async probeStream(r) {
@@ -663,6 +675,7 @@ export default class extends Extension {
   }
 
   async resolveEmbed(embed, referer) {
+    this._lastResolveError = "";
     const src = this.fix(embed);
     if (!src) return null;
     if (/\.m3u8(\?|#|$)/i.test(src)) {
@@ -753,6 +766,10 @@ export default class extends Extension {
           html = "";
         }
         if (typeof html !== "string" || html.length < 500) continue;
+        if (/no longer available|expired or has been deleted|file (?:was )?not found/i.test(html)) {
+          this._lastResolveError = "El enlace de StreamWish expiró o fue eliminado.";
+          continue;
+        }
         // Cascara "Page is loading": reintento con la cookie ya guardada.
         if (html.indexOf("Page is loading") !== -1 || html.indexOf("Redirecting") !== -1) {
           try {
@@ -762,7 +779,10 @@ export default class extends Extension {
           } catch (_) {}
         }
         if (typeof html !== "string" || !html) continue;
-        if (html.indexOf("Just a moment") !== -1) continue;
+        if (html.indexOf("Just a moment") !== -1) {
+          this._lastResolveError = "StreamWish está bloqueando la petición (Cloudflare).";
+          continue;
+        }
 
         const r = await this.swHtml(html, "https://" + h);
         if (r) return r;
@@ -775,6 +795,9 @@ export default class extends Extension {
           };
         }
       }
+    }
+    if (!this._lastResolveError) {
+      this._lastResolveError = "StreamWish no devolvió un HLS reproducible.";
     }
     return null;
   }
@@ -842,6 +865,10 @@ export default class extends Extension {
         html = "";
       }
       if (typeof html !== "string" || !html) continue;
+      if (/no longer available|expired or has been deleted|file (?:was )?not found/i.test(html)) {
+        this._lastResolveError = "El enlace de VidHide expiró o fue eliminado.";
+        continue;
+      }
       if (
         html.length < 2000 &&
         (html.indexOf("Page is loading") !== -1 || html.indexOf("Redirecting") !== -1)
@@ -853,10 +880,16 @@ export default class extends Extension {
         } catch (_) {}
       }
       if (typeof html !== "string" || !html) continue;
-      if (html.indexOf("Just a moment") !== -1) continue;
+      if (html.indexOf("Just a moment") !== -1) {
+        this._lastResolveError = "VidHide está bloqueando la petición (Cloudflare).";
+        continue;
+      }
 
       const r = this.streamFromPage(html, "https://" + h);
       if (r) return r;
+    }
+    if (!this._lastResolveError) {
+      this._lastResolveError = "VidHide no devolvió un stream reproducible.";
     }
     return null;
   }
@@ -1110,6 +1143,11 @@ export default class extends Extension {
           continue;
         }
         if (typeof res !== "string" || !res) continue;
+        if (/Confirm you(?:'|&#39;|’)?re human|altcha|verify you are human|cf-turnstile|hcaptcha/i.test(res)) {
+          this._lastResolveError =
+            "VOE requiere verificación humana (Altcha); no se puede resolver automáticamente.";
+          continue;
+        }
 
         const red = res.match(/window\.location\.href\s*=\s*['"](https?:\/\/[^'"]+)['"]/i);
         if (red && res.indexOf("application/json") === -1) {
@@ -1124,12 +1162,23 @@ export default class extends Extension {
           } catch (_) {}
         }
 
+        if (/Confirm you(?:'|&#39;|’)?re human|altcha|verify you are human|cf-turnstile|hcaptcha/i.test(res)) {
+          this._lastResolveError =
+            "VOE requiere verificación humana (Altcha); no se puede resolver automáticamente.";
+          continue;
+        }
+
         if (res.indexOf('<script type="application/json">["') !== -1 || /\.m3u8/i.test(res)) {
           html = res;
           break;
         }
       }
-      if (!html) return null;
+      if (!html) {
+        if (!this._lastResolveError) {
+          this._lastResolveError = "VOE no devolvió la configuración del video.";
+        }
+        return null;
+      }
 
       let url = "";
       const m = html.match(/<script type="application\/json">\["([^"]+)"\]<\/script>/);
@@ -1161,7 +1210,10 @@ export default class extends Extension {
         const d = html.match(/['"](https?:\/\/[^'"]+\.m3u8[^'"]*)['"]/i);
         if (d) url = d[1];
       }
-      if (!url) return null;
+      if (!url) {
+        this._lastResolveError = "VOE no expuso una URL de video válida.";
+        return null;
+      }
 
       url = this.fix(url);
       if (search && url.indexOf("t=") === -1) {

@@ -24,7 +24,7 @@
         "package": "pelisjuanita",
         "type": "bangumi",
         "url": "https://raw.githubusercontent.com/yeflixlite/Anime/main/extensions/pelisjuanita.js",
-        "version": "v0.1.7",
+        "version": "v0.1.8",
         "webSite": "https://pelisjuanita.com"
     },
     {
@@ -38,7 +38,7 @@
         "package": "pelispedia",
         "type": "bangumi",
         "url": "https://raw.githubusercontent.com/yeflixlite/Anime/main/extensions/pelispedia.js",
-        "version": "v0.1.4",
+        "version": "v0.1.5",
         "webSite": "https://pelispedia.mov"
     }
 ]
