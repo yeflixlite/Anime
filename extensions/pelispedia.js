@@ -1,6 +1,6 @@
 // ==MiruExtension==
 // @name         Pelis Premium
-// @version      v0.1.6
+// @version      v0.1.7
 // @author       YeaniFlix
 // @lang         es
 // @license      MIT
@@ -431,7 +431,7 @@ export default class extends Extension {
     if (/streamwish|hglink|streamhg|playnixes|hglamioz|medixiru|awish|hgcloud|sfastwish|wishfast|streamhide|desiupload/i.test(s)) {
       return { key: "streamwish", name: "StreamWish" };
     }
-    if (/vidhide|earnvids|morencius|callistanise|minochinos|vsharea|vhide|vid-hide/i.test(s)) {
+    if (/vidhide|earnvids|morencius|callistanise|minochinos|vsharea|vhide|vid-hide|vidhideplus/i.test(s)) {
       return { key: "vidhide", name: "VidHide" };
     }
     return null;
@@ -526,7 +526,8 @@ export default class extends Extension {
       h.indexOf("callistanise") !== -1 ||
       h.indexOf("minochinos") !== -1 ||
       h.indexOf("vsharea") !== -1 ||
-      h.indexOf("morencius") !== -1
+      h.indexOf("morencius") !== -1 ||
+      h.indexOf("vidhideplus") !== -1
     )
       return 2;
     if (h.indexOf("voe") !== -1) return 3;
@@ -556,7 +557,7 @@ export default class extends Extension {
       const r = await this.streamwish(src);
       if (r) return r;
     }
-    if (/vidhide|earnvids|morencius|callistanise|minochinos|vsharea|vhide|vid-hide/i.test(src)) {
+    if (/vidhide|earnvids|morencius|callistanise|minochinos|vsharea|vhide|vid-hide|vidhideplus/i.test(src)) {
       const r = await this.vidhide(src);
       if (r) return r;
     }
@@ -930,6 +931,7 @@ export default class extends Extension {
     const hosts = [
       "callistanise.com",
       "vidhidefast.com",
+      "vidhideplus.com",
       "minochinos.com",
     ];
     if (own && hosts.indexOf(own) === -1 && !/morencius/i.test(own)) {
@@ -947,6 +949,7 @@ export default class extends Extension {
 
   async vidhideHost(h, id, search) {
     const page = "https://" + h + "/v/" + id + search;
+    // Primera petición con timeout de 5s (CDN de VidHide puede ser lento)
     let html = await this.limit(
       this.request("", {
         headers: {
@@ -957,7 +960,7 @@ export default class extends Extension {
           "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
         },
       }),
-      3000,
+      5000,
       ""
     );
     if (typeof html !== "string" || !html) return null;
@@ -965,11 +968,12 @@ export default class extends Extension {
       html.length < 2000 &&
       (html.indexOf("Page is loading") !== -1 || html.indexOf("Redirecting") !== -1)
     ) {
+      // Reintentar con referer de la propia página y timeout mayor
       html = await this.limit(
         this.request("", {
           headers: { "Miru-Url": page, "Referer": page, "User-Agent": UA },
         }),
-        3000,
+        6000,
         ""
       );
     }
