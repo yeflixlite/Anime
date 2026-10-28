@@ -203,7 +203,7 @@ export default class extends Extension {
     for (const s of ordered) {
       let r = null;
       try {
-        r = await this.limit(this.resolveEmbed(s.url, full), 3500, null);
+        r = await this.limit(this.resolveEmbed(s.url, full), 2000, null);
       } catch (_) {
         r = null;
       }
