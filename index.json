@@ -1,7 +1,7 @@
 [
     {
         "author": "YeaniFlix",
-        "description": "Anime en espa\u00f1ol (Latino/Castellano) v\u00eda Latanime",
+        "description": "Anime en español (Latino/Castellano) vía Latanime",
         "icon": "https://latanime.org/favicon.ico",
         "lang": "es",
         "license": "MIT",
@@ -15,7 +15,7 @@
     },
     {
         "author": "YeaniFlix",
-        "description": "Pel\u00edculas y series en espa\u00f1ol v\u00eda PelisJuanita",
+        "description": "Películas y series en español vía PelisJuanita",
         "icon": "https://pelisjuanita.com/favicon.ico",
         "lang": "es",
         "license": "MIT",
@@ -29,7 +29,7 @@
     },
     {
         "author": "YeaniFlix",
-        "description": "Pel\u00edculas y series en espa\u00f1ol v\u00eda PelisPedia (Embed69)",
+        "description": "Películas y series en español vía PelisPedia (Embed69)",
         "icon": "https://pelispedia.mov/favicon.ico",
         "lang": "es",
         "license": "MIT",
@@ -38,12 +38,12 @@
         "package": "pelispedia",
         "type": "bangumi",
         "url": "https://raw.githubusercontent.com/yeflixlite/Anime/main/extensions/pelispedia.js",
-        "version": "v0.1.8",
+        "version": "v0.1.9",
         "webSite": "https://pelispedia.mov"
     },
     {
         "author": "YeaniFlix",
-        "description": "Pel\u00edculas y series HLS en espa\u00f1ol (Latino/Castellano/Sub) v\u00eda UnLimPlay",
+        "description": "Películas y series HLS en español (Latino/Castellano/Sub) vía UnLimPlay",
         "icon": "https://unlimplay.com/favicon.ico",
         "lang": "es",
         "license": "MIT",
