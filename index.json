@@ -40,5 +40,19 @@
         "url": "https://raw.githubusercontent.com/yeflixlite/Anime/main/extensions/pelispedia.js",
         "version": "v0.1.8",
         "webSite": "https://pelispedia.mov"
+    },
+    {
+        "author": "YeaniFlix",
+        "description": "Pel\u00edculas y series HLS en espa\u00f1ol (Latino/Castellano/Sub) v\u00eda UnLimPlay",
+        "icon": "https://unlimplay.com/favicon.ico",
+        "lang": "es",
+        "license": "MIT",
+        "name": "UnLimPlay",
+        "nsfw": "false",
+        "package": "unlimplay",
+        "type": "bangumi",
+        "url": "https://raw.githubusercontent.com/yeflixlite/Anime/main/extensions/unlimplay.js",
+        "version": "v0.2.0",
+        "webSite": "https://unlimplay.com"
     }
 ]

@@ -200,7 +200,7 @@ export default class extends Extension {
 
     // Primario: probar primero los hosts mas fiables (mp4upload, mixdrop, ...).
     const ordered = servers.slice().sort((a, b) => this.rankHost(a.url) - this.rankHost(b.url));
-    for (const s of ordered) {
+    for (const s of ordered.slice(0, 3)) {
       let r = null;
       try {
         r = await this.limit(this.resolveEmbed(s.url, full), 2000, null);
