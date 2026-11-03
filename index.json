@@ -54,5 +54,19 @@
         "url": "https://raw.githubusercontent.com/yeflixlite/Anime/main/extensions/unlimplay.js",
         "version": "v0.2.0",
         "webSite": "https://unlimplay.com"
+    },
+    {
+        "author": "YeaniFlix",
+        "description": "Mangas, manhwas y novelas en español vía ZonaTMO (Apto para todo público)",
+        "icon": "https://zonatmo.org/favicon/apple-touch-icon.png",
+        "lang": "es",
+        "license": "MIT",
+        "name": "ZonaTMO",
+        "nsfw": "false",
+        "package": "zonatmo",
+        "type": "manga",
+        "url": "https://raw.githubusercontent.com/yeflixlite/Anime/main/extensions/zonatmo.js",
+        "version": "v0.1.0",
+        "webSite": "https://zonatmo.org"
     }
 ]
