@@ -1,6 +1,6 @@
 // ==MiruExtension==
 // @name         ZonaTMO
-// @version      v0.1.2
+// @version      v0.1.3
 // @author       YeaniFlix
 // @lang         es
 // @license      MIT
@@ -218,6 +218,13 @@ export default class extends Extension {
   }
 
   async latest(page = 1, filter = null) {
+    return this.search("", page, filter);
+  }
+
+  async search(kw, page = 1, filter = null) {
+    if (kw && this.isNsfw(kw)) {
+      return [];
+    }
     const pageNum = page || 1;
     const type = filter?.type?.[0] || "";
     const order = filter?.order?.[0] || "recently_updated";
@@ -225,20 +232,13 @@ export default class extends Extension {
     const status = filter?.status?.[0] || "";
 
     let url = `${this.siteUrl}/biblioteca?order_item=${order}&order_dir=desc&${this.getExcludeParam()}&page=${pageNum}`;
+    if (kw && kw.trim()) {
+      url += `&title=${encodeURIComponent(kw.trim())}`;
+    }
     if (type) url += `&type=${encodeURIComponent(type)}`;
     if (demography) url += `&demography=${encodeURIComponent(demography)}`;
     if (status) url += `&status=${encodeURIComponent(status)}`;
 
-    const res = await this.req(url);
-    return this.parseCards(res);
-  }
-
-  async search(kw, page = 1) {
-    if (!kw || this.isNsfw(kw)) {
-      return [];
-    }
-    const pageNum = page || 1;
-    const url = `${this.siteUrl}/biblioteca?title=${encodeURIComponent(kw)}&${this.getExcludeParam()}&page=${pageNum}`;
     const res = await this.req(url);
     return this.parseCards(res);
   }
