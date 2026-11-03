@@ -1,6 +1,6 @@
 // ==MiruExtension==
 // @name         ZonaTMO
-// @version      v0.1.1
+// @version      v0.1.2
 // @author       YeaniFlix
 // @lang         es
 // @license      MIT
@@ -15,7 +15,7 @@ export default class extends Extension {
   constructor() {
     super();
     this.siteUrl = "https://zonatmo.org";
-    // Exclusión obligatoria permanente de:
+    // Exclusión obligatoria permanente en servidor:
     // +18, +19, Adulto, Maduro, Hentai, Ecchi, Doujinshi, Smut, Erotica, Gore,
     // BL (Boys Love), Yaoi, Shounen-ai, Omegaverse, Yuri, Girls Love, Sin Censura, Toxicidad
     this.excludedGenderIds = [
@@ -246,42 +246,40 @@ export default class extends Extension {
   async detail(url) {
     const res = await this.req(url);
 
-    // 1. Detección inmediata de marcas para adultos en la página de detalle
-    if (
-      res.includes("book-meta-mature") ||
-      res.includes("Contenido para mayores de 18") ||
-      res.includes("groups/19/bl-yaoi")
-    ) {
-      throw new Error("Contenido no apto para todo público (bloqueado por política de seguridad).");
-    }
-
-    // Delimitar al encabezado principal antes de la lista de capítulos
-    const liMatch = res.match(/<li[^>]*class="[^"]*upload-link[^"]*"[^>]*>/i);
-    const bodyIdx = res.indexOf("<body");
-    const startIdx = bodyIdx !== -1 ? bodyIdx : 0;
-    const endIdx = liMatch ? liMatch.index : res.length;
-    const headerHtml = res.substring(startIdx, endIdx);
-
-    // Verificar demografía y géneros en busca de contenido no apto
-    const genreMatches = [...headerHtml.matchAll(/href="https:\/\/zonatmo\.org\/tag\/[^"]*"[^>]*>([\s\S]*?)<\/a>/gi)].map((m) =>
+    // 1. Tags oficiales de la obra
+    const tags = [...res.matchAll(/href="https:\/\/zonatmo\.org\/tag\/[a-zA-Z0-9_\-]+"[^>]*>([\s\S]*?)<\/a>/gi)].map((m) =>
       m[1].replace(/<[^>]+>/g, "").trim()
     );
-    for (const g of genreMatches) {
-      if (this.isNsfw(g)) {
+    for (const tag of tags) {
+      if (this.isNsfw(tag)) {
         throw new Error("Contenido no apto para todo público (bloqueado por política de seguridad).");
       }
     }
 
-    // Título
-    const titleMatch = headerHtml.match(/<h1[^>]*class="[^"]*element-title[^"]*"[^>]*>([\s\S]*?)<\/h1>/i) ||
-                       headerHtml.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+    // 2. Encabezado principal de la obra (excluyendo navbar y carruseles recomendados del footer)
+    const headerMatch = res.match(/<div[^>]*class="[^"]*element-header-content-text[^"]*"[\s\S]*?<\/div>/i) ||
+                        res.match(/<section[^>]*class="[^"]*element-header[^"]*"[\s\S]*?<\/section>/i);
+    const headerHtml = headerMatch ? headerMatch[0] : "";
+
+    if (
+      headerHtml.includes("book-meta-mature") ||
+      headerHtml.includes("Contenido para mayores de 18") ||
+      headerHtml.includes(">+18<") ||
+      headerHtml.includes(">+19<")
+    ) {
+      throw new Error("Contenido no apto para todo público (bloqueado por política de seguridad).");
+    }
+
+    // 3. Título de la obra
+    const titleMatch = (headerHtml || res).match(/<h1[^>]*class="[^"]*element-title[^"]*"[^>]*>([\s\S]*?)<\/h1>/i) ||
+                       (headerHtml || res).match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
     let title = titleMatch ? titleMatch[1].replace(/<small[\s\S]*?<\/small>/gi, "").replace(/<[^>]+>/g, "").trim() : "";
 
-    if (this.isNsfw(title)) {
+    if (!title || this.isNsfw(title)) {
       throw new Error("Obra bloqueada por política de seguridad.");
     }
 
-    // Identificación de tipo de contenido
+    // 4. Identificación de tipo de contenido
     let typeLabel = "Manga";
     if (url.includes("/novel/")) {
       typeLabel = "Novela";
@@ -290,8 +288,8 @@ export default class extends Extension {
     } else if (url.includes("/manhua/")) {
       typeLabel = "Manhua";
     } else {
-      const typeBadge = headerHtml.match(/<h1[^>]*class="[^"]*book-type[^"]*"[^>]*>([\s\S]*?)<\/h1>/i) ||
-                        headerHtml.match(/<span[^>]*class="[^"]*book-type[^"]*"[^>]*>([\s\S]*?)<\/span>/i);
+      const typeBadge = (headerHtml || res).match(/<h1[^>]*class="[^"]*book-type[^"]*"[^>]*>([\s\S]*?)<\/h1>/i) ||
+                        (headerHtml || res).match(/<span[^>]*class="[^"]*book-type[^"]*"[^>]*>([\s\S]*?)<\/span>/i);
       if (typeBadge) {
         const rawT = typeBadge[1].replace(/<[^>]+>/g, "").trim().toUpperCase();
         if (rawT.includes("NOVEL")) typeLabel = "Novela";
@@ -311,18 +309,26 @@ export default class extends Extension {
       title = `[${typeLabel}] ${title}`;
     }
 
-    // Portada
-    const coverMatch = headerHtml.match(/<img[^>]+src=["'](https:\/\/zonatmo\.org\/storage\/[^"']+)["']/i) ||
-                       headerHtml.match(/<img[^>]+src=["'](https:\/\/storage\d*\.zonatmo\.org\/[^"']+)["']/i) ||
-                       headerHtml.match(/data-bg=["']([^"']+)["']/i);
+    // 5. Portada
+    const coverMatch = (headerHtml || res).match(/<img[^>]+src=["'](https:\/\/zonatmo\.org\/storage\/[^"']+)["']/i) ||
+                       (headerHtml || res).match(/<img[^>]+src=["'](https:\/\/storage\d*\.zonatmo\.org\/[^"']+)["']/i) ||
+                       (headerHtml || res).match(/data-bg=["']([^"']+)["']/i);
     const cover = coverMatch ? coverMatch[1] : "";
 
-    // Sinopsis
-    const descMatch = headerHtml.match(/<p[^>]*class="[^"]*element-description[^"]*"[^>]*>([\s\S]*?)<\/p>/i) ||
-                      headerHtml.match(/<div[^>]*class="[^"]*synopsis[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
-    const desc = descMatch ? descMatch[1].replace(/<[^>]+>/g, "").trim() : "";
+    // 6. Sinopsis
+    const descMatch = res.match(/<p[^>]*class="[^"]*element-description[^"]*"[^>]*>([\s\S]*?)<\/p>/i) ||
+                      res.match(/<div[^>]*class="[^"]*synopsis[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
+    const rawDesc = descMatch ? descMatch[1].replace(/<[^>]+>/g, "").trim() : "";
 
-    // Lista de capítulos
+    let infoHeader = `Tipo: ${typeLabel}`;
+    if (typeLabel === "Manhwa") {
+      infoHeader += "\n\n💡 Modo Webtoon: Para leer las tiras en ancho completo y sin bordes estrechos, toca la pantalla, abre Ajustes (⚙️) y selecciona 'Webtoon'.";
+    }
+    if (tags.length > 0) {
+      infoHeader += `\nGéneros: ${tags.join(", ")}`;
+    }
+
+    // 7. Lista de capítulos
     const chapterItems = [...res.matchAll(/<li[^>]*class="[^"]*upload-link[^"]*"[^>]*>([\s\S]*?)<\/li>/gi)];
     const episodes = [];
 
@@ -340,12 +346,10 @@ export default class extends Extension {
       }
     }
 
-    const genresText = genreMatches.length > 0 ? `\nGéneros: ${genreMatches.join(", ")}` : "";
-
     return {
       title,
       cover,
-      desc: `Tipo: ${typeLabel}${genresText}\n\n${desc}`,
+      desc: `${infoHeader}\n\n${rawDesc}`,
       episodes: [
         {
           title: "Capítulos",
@@ -380,6 +384,12 @@ export default class extends Extension {
       }
     }
 
-    return { urls: images };
+    return {
+      urls: images,
+      headers: {
+        "Referer": "https://zonatmo.org/",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+      }
+    };
   }
 }
