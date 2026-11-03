@@ -1,6 +1,6 @@
 // ==MiruExtension==
 // @name         ZonaTMO
-// @version      v0.1.0
+// @version      v0.1.1
 // @author       YeaniFlix
 // @lang         es
 // @license      MIT
@@ -15,8 +15,41 @@ export default class extends Extension {
   constructor() {
     super();
     this.siteUrl = "https://zonatmo.org";
-    // Exclusión obligatoria permanente de contenido +18, hentai, ecchi, doujinshi y adulto
-    this.excludedGenderIds = [19, 27, 29, 32, 33, 44, 92, 123, 142, 144, 153];
+    // Exclusión obligatoria permanente de:
+    // +18, +19, Adulto, Maduro, Hentai, Ecchi, Doujinshi, Smut, Erotica, Gore,
+    // BL (Boys Love), Yaoi, Shounen-ai, Omegaverse, Yuri, Girls Love, Sin Censura, Toxicidad
+    this.excludedGenderIds = [
+      19, // Ecchi
+      27, // +18
+      29, // Smut
+      30, // Boys Love
+      31, // Yaoi
+      32, // Adulto
+      33, // Maduro
+      35, // Girls Love
+      44, // Gore
+      52, // Yuri
+      68, // Traps
+      80, // BL (Boys Love)
+      81, // Adult Cast
+      92, // Doujinshi
+      94, // Shonen-ai
+      95, // Shonen-ai (Yaoi Soft)
+      96, // Yaoi (Soft)
+      123, // Erotica
+      129, // Shounen Ai
+      132, // Omegaverse
+      140, // Toxicidad
+      141, // Mucho Gogogo
+      142, // Manhwa +19
+      143, // BL
+      144, // +19
+      149, // boys
+      150, // boyslove
+      153, // Bl Sin Censura
+      155, // Nobl💌
+      156  // Toxicidad Nivel Chernóbil
+    ];
   }
 
   getExcludeParam() {
@@ -25,7 +58,7 @@ export default class extends Extension {
 
   isNsfw(text) {
     if (!text) return false;
-    const nsfwPattern = /\b(hentai|doujinshi|ecchi|erotica|erótico|smut|\+18|\+19|adulto|adultos|gore|sin\s+censura|uncensored|r18|xxx)\b/i;
+    const nsfwPattern = /(hentai|doujinshi|ecchi|erotica|erótico|smut|\+18|\+19|adulto|adultos|mature|maduro|gore|sin\s*censura|uncensored|r18|xxx|\bbl\b|yaoi|boys?\s*love|boy['’]?s\s*love|shounen[\s\-_]*ai|shonen[\s\-_]*ai|omegaverse|danmei|bara|yuri|girls?\s*love|anastasia|jinx|orco\s*y\s*el\s*elfo|bj\s*alex|pintor\s*nocturno|marea\s*baja|define\s*la\s*relaci[oó]n|el\s*chico\s*de\s*la\s*perla|seducci[oó]n\s*de\s*la\s*serpiente|vecinos\s*intimos|smyrna|d[ií]as\s*soleados|omega\s*complex|querida\s*puerta|convenience\s*store|desire\s*me)/i;
     return nsfwPattern.test(text);
   }
 
@@ -50,19 +83,39 @@ export default class extends Extension {
       const cardHtml = match[0];
       const url = match[1];
 
+      // 1. Exclusión directa por badge de contenido maduro / +18 / +19 en la tarjeta
+      if (
+        cardHtml.includes("book-meta-mature") ||
+        cardHtml.includes("Contenido para mayores de 18") ||
+        cardHtml.includes(">+18<") ||
+        cardHtml.includes(">+19<")
+      ) {
+        continue;
+      }
+
+      // 2. Comprobación general en el HTML íntegro de la tarjeta
+      if (this.isNsfw(cardHtml)) {
+        continue;
+      }
+
       // Título
       const titleMatch = cardHtml.match(/<h4[^>]*title="([^"]+)"/i) || cardHtml.match(/<h4[^>]*>([\s\S]*?)<\/h4>/i);
       const rawTitle = titleMatch ? (titleMatch[1] || titleMatch[2]).replace(/<[^>]+>/g, "").trim() : "";
+      if (!rawTitle || this.isNsfw(rawTitle)) {
+        continue;
+      }
 
       // Tipo de obra
       const typeMatch = cardHtml.match(/<span[^>]*class="[^"]*book-type[^"]*"[^>]*>([\s\S]*?)<\/span>/i);
       const rawType = typeMatch ? typeMatch[1].replace(/<[^>]+>/g, "").trim().toUpperCase() : "MANGA";
-
-      // Filtro estricto de contenido no apto
-      if (["DOUJINSHI", "HENTAI", "ECCHI", "ADULT", "+18"].includes(rawType)) {
+      if (this.isNsfw(rawType)) {
         continue;
       }
-      if (this.isNsfw(rawTitle) || this.isNsfw(rawType)) {
+
+      // Demografía
+      const demoMatch = cardHtml.match(/<span[^>]*class="[^"]*demography[^"]*"[^>]*>([\s\S]*?)<\/span>/i);
+      const demography = demoMatch ? demoMatch[1].replace(/<[^>]+>/g, "").trim() : "";
+      if (this.isNsfw(demography)) {
         continue;
       }
 
@@ -70,15 +123,9 @@ export default class extends Extension {
       const coverMatch = cardHtml.match(/data-bg="([^"]+)"/i) || cardHtml.match(/src="([^"]+)"/i);
       const cover = coverMatch ? coverMatch[1] : "";
 
-      // Estado y demografía
+      // Estado
       const statusMatch = cardHtml.match(/<span[^>]*class="[^"]*book-meta-status[^"]*"[^>]*>([\s\S]*?)<\/span>/i);
       const status = statusMatch ? statusMatch[1].replace(/<[^>]+>/g, "").trim() : "";
-
-      const demoMatch = cardHtml.match(/<span[^>]*class="[^"]*demography[^"]*"[^>]*>([\s\S]*?)<\/span>/i);
-      const demography = demoMatch ? demoMatch[1].replace(/<[^>]+>/g, "").trim() : "";
-      if (this.isNsfw(demography)) {
-        continue;
-      }
 
       // Identificación de categoría original
       let typeLabel = "Manga";
@@ -199,6 +246,15 @@ export default class extends Extension {
   async detail(url) {
     const res = await this.req(url);
 
+    // 1. Detección inmediata de marcas para adultos en la página de detalle
+    if (
+      res.includes("book-meta-mature") ||
+      res.includes("Contenido para mayores de 18") ||
+      res.includes("groups/19/bl-yaoi")
+    ) {
+      throw new Error("Contenido no apto para todo público (bloqueado por política de seguridad).");
+    }
+
     // Delimitar al encabezado principal antes de la lista de capítulos
     const liMatch = res.match(/<li[^>]*class="[^"]*upload-link[^"]*"[^>]*>/i);
     const bodyIdx = res.indexOf("<body");
@@ -241,7 +297,7 @@ export default class extends Extension {
         if (rawT.includes("NOVEL")) typeLabel = "Novela";
         else if (rawT.includes("MANHWA")) typeLabel = "Manhwa";
         else if (rawT.includes("MANHUA")) typeLabel = "Manhua";
-        else if (rawT.includes("DOUJINSHI") || rawT.includes("HENTAI")) {
+        else if (this.isNsfw(rawT)) {
           throw new Error("Contenido no apto para todo público.");
         }
       }
