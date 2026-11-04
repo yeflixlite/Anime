@@ -15,20 +15,6 @@
     },
     {
         "author": "YeaniFlix",
-        "description": "Películas y series en español vía PelisJuanita",
-        "icon": "https://pelisjuanita.com/favicon.ico",
-        "lang": "es",
-        "license": "MIT",
-        "name": "Pelis",
-        "nsfw": "false",
-        "package": "pelisjuanita",
-        "type": "bangumi",
-        "url": "https://raw.githubusercontent.com/yeflixlite/Anime/main/extensions/pelisjuanita.js",
-        "version": "v0.1.8",
-        "webSite": "https://pelisjuanita.com"
-    },
-    {
-        "author": "YeaniFlix",
         "description": "Películas y series en español vía PelisPedia (Embed69)",
         "icon": "https://pelispedia.mov/favicon.ico",
         "lang": "es",
@@ -40,20 +26,6 @@
         "url": "https://raw.githubusercontent.com/yeflixlite/Anime/main/extensions/pelispedia.js",
         "version": "v0.1.9",
         "webSite": "https://pelispedia.mov"
-    },
-    {
-        "author": "YeaniFlix",
-        "description": "Películas y series HLS en español (Latino/Castellano/Sub) vía UnLimPlay",
-        "icon": "https://unlimplay.com/favicon.ico",
-        "lang": "es",
-        "license": "MIT",
-        "name": "UnLimPlay",
-        "nsfw": "false",
-        "package": "unlimplay",
-        "type": "bangumi",
-        "url": "https://raw.githubusercontent.com/yeflixlite/Anime/main/extensions/unlimplay.js",
-        "version": "v0.2.0",
-        "webSite": "https://unlimplay.com"
     },
     {
         "author": "YeaniFlix",
